@@ -29,14 +29,32 @@ suspend fun main() =
     val writableDataSource = WritableDataSource(mysqlDataSource)
     val config = HikariConfig()
     config.dataSource = writableDataSource
+
+//    30 seconds is the lowest possible keepalive. Keepalive triggers validation even under max load as long as connections are returned to hikari
+//    config.keepaliveTime = 30_000
+
     val dataSource = HikariDataSource(config)
 
     setCounterToZero(dataSource.connection)
 
+    //    concurrentWriters = 1000 prevents all validation because connections are reused within [aliveBypassWindowMs](https://github.com/brettwooldridge/HikariCP/blob/0a6ccdb334b2ecde25ae090034669d534736a0de/src/main/java/com/zaxxer/hikari/pool/HikariPool.java#L65)
+//    launchWriters(
+//      dataSource,
+//      concurrentWriters = 1000,
+//      delayRange = (0..250),
+//    )
+
+    // concurrentWriters = 100 and delay of only 50ms prevent all validations for the same reason as above
+//    launchWriters(
+//      dataSource,
+//      concurrentWriters = 100,
+//      delayRange = (0..50),
+//    )
+
     launchWriters(
       dataSource,
       concurrentWriters = 100,
-      delayRange = (0..250),
+      delayRange = (0..50),
     )
 
     launchReaders(
