@@ -54,13 +54,13 @@ suspend fun main() =
     launchWriters(
       dataSource,
       concurrentWriters = 100,
-      delayRange = (0..250),
+      delayRangeMillis = (0..250),
     )
 
     launchReaders(
       dataSource,
       concurrentReaders = 2,
-      delayRange = (1000..3000),
+      delayRangeMillis = (1000..3000),
     )
   }
 
@@ -82,7 +82,7 @@ private fun setCounterToZero(connection: Connection) {
 fun CoroutineScope.launchReaders(
   dataSource: HikariDataSource,
   concurrentReaders: Int,
-  delayRange: IntRange,
+  delayRangeMillis: IntRange,
 ) {
   launchAction(
     {
@@ -91,20 +91,20 @@ fun CoroutineScope.launchReaders(
     },
     dataSource,
     concurrentReaders,
-    delayRange,
+    delayRangeMillis,
   )
 }
 
 private fun CoroutineScope.launchWriters(
   dataSource: HikariDataSource,
   concurrentWriters: Int,
-  delayRange: IntRange,
+  delayRangeMillis: IntRange,
 ) {
   launchAction(
     { incrementCounter(it) },
     dataSource,
     concurrentWriters,
-    delayRange,
+    delayRangeMillis,
   )
 }
 
@@ -112,7 +112,7 @@ private fun CoroutineScope.launchAction(
   action: (Connection) -> Unit,
   dataSource: DataSource,
   concurrency: Int,
-  delayRange: IntRange,
+  delayRangeMillis: IntRange,
 ) {
   repeat(concurrency) {
     launch {
@@ -122,7 +122,7 @@ private fun CoroutineScope.launchAction(
         } catch (e: Exception) {
           logger.debug(e.message)
         }
-        val delayMillis = delayRange.random().toLong()
+        val delayMillis = delayRangeMillis.random().toLong()
         delay(delayMillis)
       }
     }
