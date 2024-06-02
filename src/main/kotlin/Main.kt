@@ -4,69 +4,130 @@ import com.mysql.cj.jdbc.JdbcConnection
 import com.mysql.cj.jdbc.MysqlDataSource
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.sql.Connection
 import javax.sql.DataSource
 import com.mysql.cj.jdbc.ConnectionImpl as MysqlJdbcConnectionImpl
 import com.mysql.cj.jdbc.JdbcConnection as MySQLJdbcConnection
 
-fun main() {
-  val logger = LoggerFactory.getLogger("Main")
-  val connectTimeout = 5000
-  val socketTimeout = 30_000
-  val mysqlDataSource = MysqlDataSource()
-  mysqlDataSource.user = "alice"
-  mysqlDataSource.password = "s3cret"
-  val jdbcURL = "jdbc:mysql://127.0.0.1:3306/foobar_db?connectTimeout=$connectTimeout&socketTimeout=$socketTimeout"
-  mysqlDataSource.setURL(jdbcURL)
-  val writableDataSource = WritableDataSource(mysqlDataSource)
-  val config = HikariConfig()
-  config.dataSource = writableDataSource
-  val ds = HikariDataSource(config)
+val logger: Logger = LoggerFactory.getLogger("Main")
 
-  ds.connection.use { conn ->
-    conn.prepareStatement(
-      """
-      insert into
-          foobar_db.stuff (id, counter)
-      values
-          (1, 0)
-      on duplicate key
-          update counter = 0;
-      """.trimIndent(),
-    ).executeUpdate()
+suspend fun main() =
+  coroutineScope {
+    val connectTimeout = 5000
+    val socketTimeout = 30_000
+    val mysqlDataSource = MysqlDataSource()
+    mysqlDataSource.user = "alice"
+    mysqlDataSource.password = "s3cret"
+    val jdbcURL = "jdbc:mysql://127.0.0.1:3306/foobar_db?connectTimeout=$connectTimeout&socketTimeout=$socketTimeout"
+    mysqlDataSource.setURL(jdbcURL)
+    val writableDataSource = WritableDataSource(mysqlDataSource)
+    val config = HikariConfig()
+    config.dataSource = writableDataSource
+    val dataSource = HikariDataSource(config)
+
+    dataSource.connection.use { conn ->
+      conn.prepareStatement(
+        """
+        insert into
+            stuff (id, counter)
+        values
+            (1, 0)
+        on duplicate key
+            update counter = 0;
+        """.trimIndent(),
+      ).executeUpdate()
+    }
+
+    launchWriters(
+      dataSource,
+      concurrentWriters = 1000,
+      delayRange = (0..250),
+    )
+
+    launchReaders(
+      dataSource,
+      concurrentReaders = 2,
+      delayRange = (1000..3000),
+    )
   }
 
-  while (true) {
-    try {
-      val counter = incrementCounter(ds.connection)
+fun CoroutineScope.launchReaders(
+  dataSource: HikariDataSource,
+  concurrentReaders: Int,
+  delayRange: IntRange,
+) {
+  launchAction(
+    {
+      val counter = selectCounter(it)
       logger.info("counter=$counter")
-      if (counter.mod(13) == 0) {
-        Thread.sleep((0..1000).random().toLong())
+    },
+    dataSource,
+    concurrentReaders,
+    delayRange,
+  )
+}
+
+private fun CoroutineScope.launchWriters(
+  dataSource: HikariDataSource,
+  concurrentWriters: Int,
+  delayRange: IntRange,
+) {
+  launchAction(
+    { incrementCounter(it) },
+    dataSource,
+    concurrentWriters,
+    delayRange,
+  )
+}
+
+private fun CoroutineScope.launchAction(
+  action: (Connection) -> Unit,
+  dataSource: DataSource,
+  concurrency: Int,
+  delayRange: IntRange,
+) {
+  repeat(concurrency) {
+    launch {
+      while (true) {
+        try {
+          action(dataSource.connection)
+        } catch (e: Exception) {
+          logger.error(e.message)
+        }
+        val delayMillis = delayRange.random().toLong()
+        delay(delayMillis)
       }
-    } catch (e: Exception) {
-      logger.error(e.message)
     }
   }
 }
 
-fun incrementCounter(connection: Connection): Long {
+fun incrementCounter(connection: Connection) {
   connection.use { conn ->
     conn.prepareStatement(
       """
       insert into
-          foobar_db.stuff (id, counter)
+          stuff (id, counter)
       values
           (1, 1)
       on duplicate key
           update counter = counter + 1;
       """.trimIndent(),
     ).use { it.executeUpdate() }
+  }
+}
 
-    conn.prepareStatement("select counter from foobar_db.stuff where id = 1").use { stmt ->
+fun selectCounter(connection: Connection): Long {
+  return connection.use { conn ->
+    conn.prepareStatement("select counter from stuff where id = 1").use { stmt ->
       stmt.executeQuery().use { rs ->
         rs.next()
-        return rs.getLong(1)
+        rs.getLong(1)
       }
     }
   }
