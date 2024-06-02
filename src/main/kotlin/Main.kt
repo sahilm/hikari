@@ -54,7 +54,7 @@ suspend fun main() =
     launchWriters(
       dataSource,
       concurrentWriters = 100,
-      delayRange = (0..50),
+      delayRange = (0..250),
     )
 
     launchReaders(
