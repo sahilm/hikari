@@ -31,22 +31,11 @@ suspend fun main() =
     config.dataSource = writableDataSource
     val dataSource = HikariDataSource(config)
 
-    dataSource.connection.use { conn ->
-      conn.prepareStatement(
-        """
-        insert into
-            stuff (id, counter)
-        values
-            (1, 0)
-        on duplicate key
-            update counter = 0;
-        """.trimIndent(),
-      ).executeUpdate()
-    }
+    setCounterToZero(dataSource.connection)
 
     launchWriters(
       dataSource,
-      concurrentWriters = 1000,
+      concurrentWriters = 100,
       delayRange = (0..250),
     )
 
@@ -56,6 +45,21 @@ suspend fun main() =
       delayRange = (1000..3000),
     )
   }
+
+private fun setCounterToZero(connection: Connection) {
+  connection.use { conn ->
+    conn.prepareStatement(
+      """
+      insert into
+          stuff (id, counter)
+      values
+          (1, 0)
+      on duplicate key
+          update counter = 0;
+      """.trimIndent(),
+    ).use { stmt -> stmt.execute() }
+  }
+}
 
 fun CoroutineScope.launchReaders(
   dataSource: HikariDataSource,
@@ -98,7 +102,7 @@ private fun CoroutineScope.launchAction(
         try {
           action(dataSource.connection)
         } catch (e: Exception) {
-          logger.error(e.message)
+          logger.debug(e.message)
         }
         val delayMillis = delayRange.random().toLong()
         delay(delayMillis)
