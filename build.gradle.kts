@@ -1,6 +1,7 @@
 plugins {
     kotlin("jvm") version "1.9.21"
     id("idea")
+    id("application")
 }
 
 group = "org.example"
@@ -31,5 +32,10 @@ kotlin {
 idea {
     module {
         isDownloadSources = true
+        isDownloadJavadoc = true
     }
+}
+
+application {
+    mainClass.set("org.example.MainKt")
 }

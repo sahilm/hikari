@@ -5,12 +5,6 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import org.slf4j.LoggerFactory
 
-
-/*
- * dns cache down to zero
- * ensure socketTimeout in mysql driver
- *
- */
 fun main() {
     val logger = LoggerFactory.getLogger("Main")
     logger.info("hello")
