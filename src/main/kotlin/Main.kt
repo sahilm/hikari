@@ -1,12 +1,14 @@
 package org.example
 
-import com.mysql.cj.jdbc.ConnectionImpl
+import com.mysql.cj.jdbc.JdbcConnection
 import com.mysql.cj.jdbc.MysqlDataSource
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import org.slf4j.LoggerFactory
 import java.sql.Connection
 import javax.sql.DataSource
+import com.mysql.cj.jdbc.ConnectionImpl as MysqlJdbcConnectionImpl
+import com.mysql.cj.jdbc.JdbcConnection as MySQLJdbcConnection
 
 fun main() {
   val logger = LoggerFactory.getLogger("Main")
@@ -15,38 +17,57 @@ fun main() {
   val mysqlDataSource = MysqlDataSource()
   mysqlDataSource.user = "alice"
   mysqlDataSource.password = "s3cret"
-
   val jdbcURL = "jdbc:mysql://127.0.0.1:3306/foobar_db?connectTimeout=$connectTimeout&socketTimeout=$socketTimeout"
   mysqlDataSource.setURL(jdbcURL)
-  val myDataSource = WritableDataSource(mysqlDataSource)
+  val writableDataSource = WritableDataSource(mysqlDataSource)
   val config = HikariConfig()
-  config.dataSource = myDataSource
-//    config.keepaliveTime = 30000
-//    config.connectionTestQuery = "set session transaction read write"
-//    config.connectionInitSql = "select 1 for update"
-
+  config.dataSource = writableDataSource
   val ds = HikariDataSource(config)
 
-  var counter = 3
-  while (counter < 100) {
-    Thread.sleep(1000)
+  ds.connection.use { conn ->
+    conn.prepareStatement(
+      """
+      insert into
+          foobar_db.stuff (id, counter)
+      values
+          (1, 0)
+      on duplicate key
+          update counter = 0;
+      """.trimIndent(),
+    ).executeUpdate()
+  }
+
+  while (true) {
     try {
-      counter++
-      val connection = ds.connection
-      connection.use {
-        val statement = connection.createStatement()
-        statement.use {
-          val sql = "insert into bar (hi) values (?)"
-          val preparedStatement =
-            connection.prepareStatement(sql).apply {
-              setInt(1, counter)
-            }
-          val rowsAffected = preparedStatement.executeUpdate()
-          logger.info("Rows inserted: $rowsAffected")
-        }
+      val counter = incrementCounter(ds.connection)
+      logger.info("counter=$counter")
+      if (counter.mod(13) == 0) {
+        Thread.sleep((0..1000).random().toLong())
       }
     } catch (e: Exception) {
       logger.error(e.message)
+    }
+  }
+}
+
+fun incrementCounter(connection: Connection): Long {
+  connection.use { conn ->
+    conn.prepareStatement(
+      """
+      insert into
+          foobar_db.stuff (id, counter)
+      values
+          (1, 1)
+      on duplicate key
+          update counter = counter + 1;
+      """.trimIndent(),
+    ).use { it.executeUpdate() }
+
+    conn.prepareStatement("select counter from foobar_db.stuff where id = 1").use { stmt ->
+      stmt.executeQuery().use { rs ->
+        rs.next()
+        return rs.getLong(1)
+      }
     }
   }
 }
@@ -55,20 +76,31 @@ class WritableConnection(
   private val connection: Connection,
 ) : Connection by connection {
   override fun isValid(timeout: Int): Boolean {
-    return connection.isValid(timeout) && !isReadOnly
+    logger.info("validating...")
+    val result = connection.isValid(timeout) && !isReadOnly && !isAnyMySQLVarEnabled(MYSQL_GLOBAL_READ_ONLY_VARIABLES)
+    logger.info("isValid=$result")
+    return result
   }
 
-  override fun isReadOnly(): Boolean {
-    if (connection.isReadOnly) return true
+  private fun isAnyMySQLVarEnabled(vars: List<String>): Boolean {
+    if (!connection.isWrapperFor(JdbcConnection::class.java)) return false
+    val mysqlJdbcConnection = connection.unwrap(MySQLJdbcConnection::class.java)
+    if (mysqlJdbcConnection !is MysqlJdbcConnectionImpl) return false
 
-    if (connection is ConnectionImpl) {
-      val readOnlySessionVar = connection.session.queryServerVariable("@@global.read_only")
-      if (readOnlySessionVar != null) {
-        return readOnlySessionVar.toInt() != 0
-      }
+    return vars.any { variable ->
+      mysqlJdbcConnection.session.queryServerVariable(variable)?.toInt() != 0
     }
+  }
 
-    return false
+  companion object {
+    private val MYSQL_GLOBAL_READ_ONLY_VARIABLES =
+      listOf(
+        "@@global.innodb_read_only",
+        "@@global.read_only",
+        "@@global.super_read_only",
+        "@@global.transaction_read_only",
+      )
+    private val logger = LoggerFactory.getLogger(WritableConnection::class.java)
   }
 }
 
