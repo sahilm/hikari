@@ -5,6 +5,7 @@ import com.mysql.cj.jdbc.MysqlDataSource
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -37,38 +38,26 @@ suspend fun main() =
 
     setCounterToZero(dataSource.connection)
 
-//        concurrentWriters = 1000 prevents all validation because connections are reused within [aliveBypassWindowMs](https://github.com/brettwooldridge/HikariCP/blob/0a6ccdb334b2ecde25ae090034669d534736a0de/src/main/java/com/zaxxer/hikari/pool/HikariPool.java#L65)
-//        launchWriters(
-//            dataSource,
-//            concurrentWriters = 1000,
-//            delayRangeMillis = (0..250),
-//        )
+    // our maxPoolSize is the default 10 connections
 
-    // concurrentWriters = 100 and delay of only 50ms prevent all validations for the same reason as above
-//        launchWriters(
-//            dataSource,
-//            concurrentWriters = 100,
-//            delayRangeMillis = (0..50),
-//        )
+    // validation never triggers because the pool is too busy
+//    launchWriters(
+//      dataSource,
+//      concurrentWriters = 10,
+//      delayRangeMillis = (0..0),
+//    )
 
-    // concurrentWriters = 5 with no delay prevent all validations for the same reason as above
-//        launchWriters(
-//            dataSource,
-//            concurrentWriters = 10,
-//            delayRangeMillis = (0..0),
-//        )
-
-    // this setting works fine on my machine. With 100 writers sleeping for 0 to 200 ms connection validation executes at regular intervals
+    // validation triggers periodically by just adding upto 50ms of wait time between new connection checkouts
     launchWriters(
       dataSource,
-      concurrentWriters = 100,
-      delayRangeMillis = (0..250),
+      concurrentWriters = 30,
+      delayRangeMillis = (0..50),
     )
 
     launchReaders(
       dataSource,
       concurrentReaders = 2,
-      delayRangeMillis = (1000..3000),
+      delayRangeMillis = (600..1200),
     )
   }
 
@@ -122,8 +111,9 @@ private fun CoroutineScope.launchAction(
   concurrency: Int,
   delayRangeMillis: IntRange,
 ) {
+  val dispatcher = Dispatchers.IO
   repeat(concurrency) {
-    launch {
+    launch(dispatcher) {
       while (true) {
         try {
           action(dataSource.connection)
