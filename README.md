@@ -6,7 +6,7 @@ Test of connection validation under load. The findings are as follows:
 ## Usage
 
 ```bash
-docker-compose -d up
+docker-compose up -d
 ./gradlew run
 ```
 
