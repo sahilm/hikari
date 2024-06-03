@@ -54,7 +54,7 @@ suspend fun main() =
 //      delayRangeMillis = (0..50),
 //    )
 
-    // validation triggers periodically if we scale back to concurrency and keep up to 50ms wait time
+    // validation triggers periodically if we scale back the concurrency and keep up to 50ms wait time
     launchWriters(
       dataSource,
       concurrentWriters = 30,
