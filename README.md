@@ -1,6 +1,6 @@
 # HikariCP testing
 Test of connection validation under load. The findings are as follows:
-1. Given enough load connection validations will stop because connections are reused within [aliveBypassWindowMs](https://github.com/brettwooldridge/HikariCP/blob/0a6ccdb334b2ecde25ae090034669d534736a0de/src/main/java/com/zaxxer/hikari/pool/HikariPool.java#L65). `keepAliveTime` can be used to ensure validations under this heavy load but the minimum keepAliveTimer is 30 seconds.
+1. Given enough load connection validations will stop because connections are reused within [aliveBypassWindowMs](https://github.com/brettwooldridge/HikariCP/blob/0a6ccdb334b2ecde25ae090034669d534736a0de/src/main/java/com/zaxxer/hikari/pool/HikariPool.java#L65). `keepAliveTime` can be used to optimistically attempt validations under this heavy load but the minimum keepAliveTimer is 30 seconds.
 2. Beneath this threshold load connection validations are performed on connection checkout (when last query was executed > aliveBypassWindowMs) with all default HikariCP settings including maxLifetime of 30 minutes.
 
 ## Usage
