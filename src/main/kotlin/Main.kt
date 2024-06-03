@@ -24,7 +24,7 @@ suspend fun main() =
     val mysqlDataSource = MysqlDataSource()
     mysqlDataSource.user = "alice"
     mysqlDataSource.password = "s3cret"
-    val jdbcURL = "jdbc:mysql://127.0.0.1:3306/foobar_db?connectTimeout=$connectTimeout&socketTimeout=$socketTimeout"
+    val jdbcURL = "jdbc:mysql://127.0.0.1:9999/foobar_db?connectTimeout=$connectTimeout&socketTimeout=$socketTimeout"
     mysqlDataSource.setURL(jdbcURL)
     val writableDataSource = WritableDataSource(mysqlDataSource)
     val config = HikariConfig()
@@ -37,20 +37,28 @@ suspend fun main() =
 
     setCounterToZero(dataSource.connection)
 
-    //    concurrentWriters = 1000 prevents all validation because connections are reused within [aliveBypassWindowMs](https://github.com/brettwooldridge/HikariCP/blob/0a6ccdb334b2ecde25ae090034669d534736a0de/src/main/java/com/zaxxer/hikari/pool/HikariPool.java#L65)
-//    launchWriters(
-//      dataSource,
-//      concurrentWriters = 1000,
-//      delayRange = (0..250),
-//    )
+//        concurrentWriters = 1000 prevents all validation because connections are reused within [aliveBypassWindowMs](https://github.com/brettwooldridge/HikariCP/blob/0a6ccdb334b2ecde25ae090034669d534736a0de/src/main/java/com/zaxxer/hikari/pool/HikariPool.java#L65)
+//        launchWriters(
+//            dataSource,
+//            concurrentWriters = 1000,
+//            delayRangeMillis = (0..250),
+//        )
 
     // concurrentWriters = 100 and delay of only 50ms prevent all validations for the same reason as above
-//    launchWriters(
-//      dataSource,
-//      concurrentWriters = 100,
-//      delayRange = (0..50),
-//    )
+//        launchWriters(
+//            dataSource,
+//            concurrentWriters = 100,
+//            delayRangeMillis = (0..50),
+//        )
 
+    // concurrentWriters = 5 with no delay prevent all validations for the same reason as above
+//        launchWriters(
+//            dataSource,
+//            concurrentWriters = 10,
+//            delayRangeMillis = (0..0),
+//        )
+
+    // this setting works fine on my machine. With 100 writers sleeping for 0 to 200 ms connection validation executes at regular intervals
     launchWriters(
       dataSource,
       concurrentWriters = 100,
