@@ -47,7 +47,14 @@ suspend fun main() =
 //      delayRangeMillis = (0..0),
 //    )
 
-    // validation triggers periodically by just adding upto 50ms of wait time between new connection checkouts
+    // validation never triggers because the pool is too busy
+//    launchWriters(
+//      dataSource,
+//      concurrentWriters = 100,
+//      delayRangeMillis = (0..50),
+//    )
+
+    // validation triggers periodically if we scale back to concurrency and keep up to 50ms wait time
     launchWriters(
       dataSource,
       concurrentWriters = 30,
