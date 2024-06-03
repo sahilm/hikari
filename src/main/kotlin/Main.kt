@@ -6,9 +6,9 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.sql.Connection
@@ -18,28 +18,28 @@ import com.mysql.cj.jdbc.JdbcConnection as MySQLJdbcConnection
 
 val logger: Logger = LoggerFactory.getLogger("Main")
 
-suspend fun main() =
-  coroutineScope {
-    val connectTimeout = 5000
-    val socketTimeout = 30_000
-    val mysqlDataSource = MysqlDataSource()
-    mysqlDataSource.user = "alice"
-    mysqlDataSource.password = "s3cret"
-    val jdbcURL = "jdbc:mysql://127.0.0.1:9999/foobar_db?connectTimeout=$connectTimeout&socketTimeout=$socketTimeout"
-    mysqlDataSource.setURL(jdbcURL)
-    val writableDataSource = WritableDataSource(mysqlDataSource)
-    val config = HikariConfig()
-    config.dataSource = writableDataSource
+fun main() {
+  val connectTimeout = 5000
+  val socketTimeout = 30_000
+  val mysqlDataSource = MysqlDataSource()
+  mysqlDataSource.user = "alice"
+  mysqlDataSource.password = "s3cret"
+  val jdbcURL = "jdbc:mysql://127.0.0.1:9999/foobar_db?connectTimeout=$connectTimeout&socketTimeout=$socketTimeout"
+  mysqlDataSource.setURL(jdbcURL)
+  val writableDataSource = WritableDataSource(mysqlDataSource)
+  val config = HikariConfig()
+  config.dataSource = writableDataSource
 
-//    30 seconds is the lowest possible keepalive. Keepalive triggers validation even under max load as long as connections are returned to hikari
-//    config.keepaliveTime = 30_000
+//    30 seconds is the lowest possible keepalive. Keepalive may trigger validations under load but it's not guaranteed.
+//  config.keepaliveTime = 30_000
 
-    val dataSource = HikariDataSource(config)
+  val dataSource = HikariDataSource(config)
 
-    setCounterToZero(dataSource.connection)
+  setCounterToZero(dataSource.connection)
 
-    // our maxPoolSize is the default 10 connections
+  // our maxPoolSize is the default 10 connections
 
+  runBlocking(Dispatchers.IO) {
     // validation never triggers because the pool is too busy
 //    launchWriters(
 //      dataSource,
@@ -67,6 +67,7 @@ suspend fun main() =
       delayRangeMillis = (600..1200),
     )
   }
+}
 
 private fun setCounterToZero(connection: Connection) {
   connection.use { conn ->
@@ -118,9 +119,8 @@ private fun CoroutineScope.launchAction(
   concurrency: Int,
   delayRangeMillis: IntRange,
 ) {
-  val dispatcher = Dispatchers.IO
   repeat(concurrency) {
-    launch(dispatcher) {
+    launch {
       while (true) {
         try {
           action(dataSource.connection)
